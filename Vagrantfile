@@ -57,16 +57,18 @@ cat <<-EOF
   WantedBy=multi-user.target
 EOF
 ) | sudo tee /etc/systemd/system/nomad.service
+(
 cat <<-EOF
-datacenter = "dc1"
-data_dir = "/opt/nomad"
+  datacenter = "dc1"
+  data_dir = "/opt/nomad"
 EOF
 ) | sudo tee /etc/nomad.d/nomad.hcl
+(
 cat <<-EOF
-server {
-  enabled = true
-  bootstrap_expect = 1
-}
+  server {
+    enabled = true
+    bootstrap_expect = 1
+  }
 EOF
 ) | sudo tee /etc/nomad.d/server.hcl
 sudo systemctl enable nomad.service
