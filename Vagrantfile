@@ -32,6 +32,8 @@ unzip nomad.zip
 sudo install nomad /usr/bin/nomad
 sudo mkdir -p /etc/nomad.d
 sudo chmod a+w /etc/nomad.d
+sudo mkdir -p /opt/nomad
+sudo chmod a+w /opt/nomad
 (
 cat <<-EOF
   [Unit]
@@ -42,13 +44,13 @@ cat <<-EOF
 
   [Service]
   ExecReload=/bin/kill -HUP $MAINPID
-  ExecStart=/usr/local/bin/nomad agent -config /etc/nomad.d
+  ExecStart=/usr/bin/nomad agent -config /etc/nomad.d >> /opt/nomad/nomad.log
   KillMode=process
   KillSignal=SIGINT
   LimitNOFILE=infinity
   LimitNPROC=infinity
   Restart=on-failure
-  RestartSec=2
+  RestartSec=20
   StartLimitBurst=3
   StartLimitIntervalSec=10
   TasksMax=infinity
@@ -72,7 +74,6 @@ cat <<-EOF
 EOF
 ) | sudo tee /etc/nomad.d/server.hcl
 sudo systemctl enable nomad.service
-sudo systemctl start nomad
 
 echo "Installing Consul..."
 CONSUL_VERSION=1.9.0
@@ -96,15 +97,17 @@ cat <<-EOF
 EOF
 ) | sudo tee /etc/systemd/system/consul.service
 sudo systemctl enable consul.service
-sudo systemctl start consul
 
 for bin in cfssl cfssl-certinfo cfssljson
 do
   echo "Installing $bin..."
   curl -sSL https://pkg.cfssl.org/R1.2/${bin}_linux-amd64 > /tmp/${bin}
-  sudo install /tmp/${bin} /usr/local/bin/${bin}
+  sudo install /tmp/${bin} /usr/bin/${bin}
 done
 nomad -autocomplete-install
+
+sudo systemctl start consul
+sudo systemctl start nomad
 
 SCRIPT
 
