@@ -2,6 +2,9 @@
 # vi: set ft=ruby :
 
 $nomad_server = <<SCRIPT
+echo "param 1 $1"
+echo "param 2 $2"
+echo "param 3 $3"
 echo "Installing Docker..."
 sudo apt-get update
 sudo apt-get remove docker docker-engine docker.io
@@ -25,7 +28,7 @@ sudo docker --version
 sudo apt-get install unzip curl vim -y
 
 echo "Installing Nomad..."
-NOMAD_VERSION=1.0.1
+NOMAD_VERSION=1.1.0
 cd /tmp/
 curl -sSL https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip -o nomad.zip
 unzip nomad.zip
@@ -41,6 +44,8 @@ cat <<-EOF
   Documentation=https://www.nomadproject.io/docs
   Wants=network-online.target
   After=network-online.target
+  StartLimitBurst=3
+  StartLimitIntervalSec=10
 
   [Service]
   ExecReload=/bin/kill -HUP $MAINPID
@@ -51,8 +56,6 @@ cat <<-EOF
   LimitNPROC=infinity
   Restart=on-failure
   RestartSec=20
-  StartLimitBurst=3
-  StartLimitIntervalSec=10
   TasksMax=infinity
 
   [Install]
@@ -63,6 +66,13 @@ EOF
 cat <<-EOF
   datacenter = "dc1"
   data_dir = "/opt/nomad"
+
+  advertise {
+    # Defaults to the first private IP address.
+    http = "$3"
+    rpc  = "$3"
+    serf = "$3" # non-default ports may be specified
+  }
 EOF
 ) | sudo tee /etc/nomad.d/nomad.hcl
 (
@@ -70,11 +80,11 @@ cat <<-EOF
   server {
     enabled = true
     bootstrap_expect = 3
+    raft_protocol = 3
     server_join {
       retry_join = [ "$1", "$2" ]
-      retry_max = 3
-      retry_interval = "3m"
-      raft_protocol = 3
+      retry_max = 12
+      retry_interval = "1m"
     }
   }
   autopilot {
@@ -91,7 +101,7 @@ EOF
 sudo systemctl enable nomad.service
 
 echo "Installing Consul..."
-CONSUL_VERSION=1.9.0
+CONSUL_VERSION=1.9.5
 curl -sSL https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip > consul.zip
 unzip /tmp/consul.zip
 sudo install consul /usr/local/bin/consul
@@ -130,24 +140,27 @@ Vagrant.configure(2) do |config|
   (1..3).each do |i|
 
     config.vm.box = "bento/ubuntu-18.04" # 18.04 LTS
-    
+
     if i == 1
       config.vm.define "ns1" do |ns1|
         ns1.vm.hostname = "ns1"
-        ns1.vm.network "private_network", ip: "10.0.0.1"
-        ns1.vm.provision "shell", inline: $nomad_server, privileged: false, args: "10.0.0.2 10.0.0.3"
+        ns1.vm.network "private_network", ip: "192.168.0.1"
+        ns1.vm.network "forwarded_port", guest: "4646", host: "4641"
+        ns1.vm.provision "shell", inline: $nomad_server, privileged: false, args: "192.168.0.2 192.168.0.3 192.168.0.1"
       end
     elsif i == 2
       config.vm.define "ns2" do |ns2|
         ns2.vm.hostname = "ns2"
-        ns2.vm.network "private_network", ip: "10.0.0.2"
-        ns2.vm.provision "shell", inline: $nomad_server, privileged: false, args: "10.0.0.1 10.0.0.3"
+        ns2.vm.network "private_network", ip: "192.168.0.2"
+        ns2.vm.network "forwarded_port", guest: "4646", host: "4642"
+        ns2.vm.provision "shell", inline: $nomad_server, privileged: false, args: "192.168.0.1 192.168.0.3 192.168.0.2"
       end
     elsif i == 3
       config.vm.define "ns3" do |ns3|
         ns3.vm.hostname = "ns3"
-        ns3.vm.network "private_network", ip: "10.0.0.3"
-        ns3.vm.provision "shell", inline: $nomad_server, privileged: false, args: "10.0.0.1 10.0.0.2"
+        ns3.vm.network "private_network", ip: "192.168.0.3"
+        ns3.vm.network "forwarded_port", guest: "4646", host: "4643"
+        ns3.vm.provision "shell", inline: $nomad_server, privileged: false, args: "192.168.0.1 192.168.0.2 192.168.0.3"
       end
     end
 
